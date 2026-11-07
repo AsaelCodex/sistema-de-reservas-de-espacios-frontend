@@ -1,0 +1,42 @@
+# Dependencias
+node_modules/
+/jspm_packages/
+
+# Carpetas de producción / compilación
+dist/
+build/
+out/
+.next/
+
+# Variables de entorno
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env.js
+
+# Registros de errores / Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Configuraciones del Editor de Código
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Archivos del Sistema Operativo
+.DS_Store
+Thumbs.db
+
+# Caché de herramientas de testing u otros linters
+.eslintcache
+.stylelintcache
+.turbo/
