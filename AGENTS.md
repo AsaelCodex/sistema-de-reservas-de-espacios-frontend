@@ -3,42 +3,61 @@
 ## 1. Propósito y alcance
 
 ReservaX es un sistema académico de reservas de espacios y equipos para
-Programación III del ITLA. El frontend será una aplicación independiente en
-React y TypeScript que consume la API existente de ASP.NET Core .NET 10.
+Programación III del ITLA. Este repositorio (`sistema-de-reservas-de-espacios-frontend`)
+contiene exclusivamente la aplicación independiente de frontend en React 19,
+TypeScript y Vite que consume la API de ASP.NET Core (.NET 10), alojada en un
+repositorio separado.
 
-Antigravity trabaja en el frontend. OpenCode trabaja en el backend.
-La separación entre ambos se sostiene mediante el contrato HTTP.
+Antigravity trabaja en este repositorio de frontend. OpenCode trabaja en el
+repositorio de backend. La separación entre ambos se sostiene mediante el
+contrato HTTP.
 
-Este archivo debe ubicarse en la raíz del frontend (por ejemplo,
-`frontend/AGENTS.md`). No sustituye el `AGENTS.md` de la raíz del repositorio.
-Respeta las instrucciones generales y las específicas del directorio.
+Este archivo se ubica en la raíz del repositorio del frontend y constituye su
+guía operativa principal.
 
-## 2. Fuentes de verdad
+## 2. Fuentes de verdad y niveles de evidencia
 
-Antes de implementar, consultar:
+Al estar el backend en un repositorio independiente, toda decisión o integración
+debe distinguir tres niveles de información:
 
-1. La tarea y las decisiones explícitas del usuario.
-2. Los PDF oficiales correspondientes a la entrega y
-   `docs/requerimientos-core.md`, contrastando diferencias con el PDF.
-3. Los Controllers, modelos de petición y respuestas reales de la API.
-4. `docs/contrato-negocio.md`, `docs/maquina-de-estados.md`,
-   `docs/gestion-permisos.md` y `docs/matriz-requisitos.md`.
-5. Este archivo y las convenciones existentes del frontend.
+1. **Requisitos oficiales de referencia:**
+   - `docs/Requerimientos_Core_PIII.pdf` y `docs/requerimientos-core.md`
+     (contrastando cualquier diferencia con el PDF).
+   - Decisiones e instrucciones explícitas del usuario en la tarea activa.
+2. **Estado histórico documentado (copias de referencia en `docs/`):**
+   - `docs/contrato-negocio.md`, `docs/maquina-de-estados.md`,
+     `docs/gestion-permisos.md` y `docs/matriz-requisitos.md`.
+   - Documentan la arquitectura y pruebas alcanzadas en entregas previas del
+     backend, pero no sustituyen la verificación del código actual del servidor.
+3. **Contrato vigente comprobado vs. contratos pendientes:**
+   - Solo se consideran comprobados los endpoints, códigos HTTP y campos JSON
+     explícitamente especificados en la documentación técnica vigente o
+     verificados contra la API en ejecución.
+   - Si falta el esquema exacto de un DTO de petición o respuesta (por ejemplo,
+     nombres de propiedades con o sin `ñ`), debe registrarse como contrato
+     pendiente y no inventarse en el frontend.
 
 No inventar requisitos, endpoints, propiedades ni permisos.
-Si documentación y código difieren, registrar la discrepancia; no cambiar
-silenciosamente el significado del requisito ni declarar terminado el flujo.
-Usar identificadores RD-XX y RF-XX en tareas y evidencia cuando corresponda.
+Si documentación y comportamiento real de la API difieren, registrar la
+discrepancia; no cambiar silenciosamente el significado del requisito ni
+declarar terminado el flujo. Usar identificadores RD-XX y RF-XX en tareas y
+evidencia cuando corresponda.
 
 ## 3. Base conocida y verificación inicial
 
-Esta guía parte del RAR revisado en esta conversación. No afirma que ese
-archivo represente el último estado de la rama local o remota.
+### Estado de este repositorio (frontend)
 
-La base revisada contiene los proyectos Core, Business, Infrastructure,
-API y Tests. Usa EF Core y SQL Server. No incluye un frontend implementado.
+- Plantilla base en React 19, TypeScript (~6.0), Vite 8, ESLint 10 y pruebas
+  sobre el ejecutor nativo de Node (`node --test`).
+- Infraestructura inicial en la rama `feature/frontend-base`: configuración de
+  conexión, cliente HTTP sobre `fetch`, gestión de sesión exclusivamente en
+  memoria (`AuthProvider`) y contratos de autenticación respaldados por
+  evidencia documental.
 
-Disponible en esa base:
+### Estado histórico documentado del backend (repositorio separado)
+
+La referencia histórica del backend (proyectos Core, Business, Infrastructure,
+API y Tests sobre EF Core y SQL Server) documenta como implementados:
 
 - Registro, activación y reenvío de activación.
 - Inicio/cierre de sesión y consulta del usuario autenticado.
@@ -48,7 +67,7 @@ Disponible en esa base:
 - Reservas: creación, consulta propia, gestión y transiciones.
 - Cola de correos, procesamiento y consulta administrativa.
 
-Pendiente en esa base:
+Pendiente en esa base histórica:
 
 - Catálogo persistido de espacios y equipos.
 - Manejador de documentos.
@@ -57,8 +76,9 @@ Pendiente en esa base:
 - Completar las cuatro entidades relacionadas del negocio (RF-NEG-01).
 
 La cola de correos no equivale a una bandeja de notificaciones.
-El README reporta 454 casos aprobados; esta cifra es evidencia histórica,
-no resultado de una ejecución actual. Verificar antes de repetirla como tal.
+Las métricas de pruebas mencionadas en documentos previos (como 454 casos
+aprobados en el backend) son evidencia histórica del repositorio del servidor,
+no resultados de ejecución de este repositorio.
 
 Al empezar cada tarea, revisar rama, cambios locales y contrato vigente.
 No borrar ni sobrescribir trabajo ajeno para obtener un árbol limpio.
@@ -151,28 +171,71 @@ Las llamadas protegidas utilizan `Authorization: Bearer <token>`.
 Los nombres JSON pueden contener `ñ` (por ejemplo, `contraseña`);
 no renombrarlos sin un adaptador explícito y comprobado.
 
-## 7. Sesión y seguridad
+### Estado del contrato de acceso (comprobado vs. pendiente)
 
-La persistencia de sesión todavía requiere una decisión técnica explícita.
-No guardar tokens por defecto en localStorage, IndexedDB o cookies legibles
-por JavaScript. Si el trabajo necesita persistencia, presentar las opciones
-y dependencias de backend antes de implementarla. No fingir que una cookie
-HttpOnly puede configurarse únicamente desde React.
+- **Comprobado en documentación del proyecto (`docs/` y `AGENTS.md`):**
+  - `POST /api/sesiones` devuelve `{ token, vencimiento }`.
+  - `DELETE /api/sesiones` revoca la sesión activa enviada en `Authorization: Bearer <token>`.
+  - `GET /api/usuarios/yo` requiere sesión válida y devuelve al menos `rol`
+    (`"Administrador"` o `"Estandar"`/`"Estándar"`, verificado en `docs/gestion-permisos.md` §5).
+  - `POST /api/reservas` recibe `{ espacio, fecha, horaInicio, horaFin }` y
+    devuelve códigos 201, 400, 401, 403, 404, 409 o 503 (`docs/contrato-negocio.md`).
+- **Pendiente de confirmar con el repositorio del backend:**
+  - Nombres exactos de las propiedades de entrada en `POST /api/sesiones`,
+    `POST /api/usuarios`, `PUT /api/usuarios/yo/contrasena`,
+    `POST /api/recuperacion-contrasena` y `POST /api/recuperacion-contrasena/cambio`
+    (específicamente el uso de `contraseña` vs `contrasena` y campos adicionales).
+  - Propiedades adicionales de respuesta en `GET /api/usuarios/yo` (`id`, `nombre`, `correo`, `activo`).
+  - Prefijo y forma de invocación de `GET /activar?token=...` y `POST /activar/reenviar`
+    para no colisionar con la ruta de cliente `/activar`.
 
-- La identidad y el rol se obtienen del servidor.
+## 7. Conexión, sesión y seguridad
+
+### Estrategia de conexión
+
+- **Desarrollo local:** Se utiliza el proxy de Vite exclusivamente para `/api`
+  hacia el destino definido en `VITE_DEV_API_PROXY_TARGET` (por defecto
+  `http://localhost:5000`), manteniendo `VITE_API_BASE_URL` vacío para que el
+  cliente HTTP emita rutas relativas (`/api/...`) y aproveche el proxy.
+  No se intercepta `/activar` en el proxy de Vite para no bloquear la futura
+  pantalla `/activar` del navegador.
+- **Producción:**
+  - Si frontend y API comparten dominio tras un reverse proxy (Nginx, IIS,
+    Caddy, CloudFront), mantener `VITE_API_BASE_URL` vacío y enrutar `/api/*`
+    hacia el backend en el servidor web.
+  - Si se despliegan en orígenes distintos, definir `VITE_API_BASE_URL` con el
+    origen absoluto de la API (`https://...`) y habilitar CORS en ASP.NET Core
+    permitiendo el origen del frontend, métodos `GET, POST, PUT, DELETE` y
+    cabeceras `Authorization` y `Content-Type`.
+  - Nunca combinar una URL absoluta en `VITE_API_BASE_URL` durante el desarrollo
+    local si se pretende usar el proxy de Vite.
+
+### Manejo de sesión
+
+La sesión se mantiene exclusivamente en memoria (`AuthProvider`) mediante el
+token opaco devuelto por el servidor:
+
+- Recargar la pestaña o abrir una nueva requiere iniciar sesión de nuevo.
+- Mantener el token en memoria evita exponerlo en `localStorage`, `sessionStorage`,
+  `IndexedDB` o cookies legibles por script, pero **no elimina por sí mismo el
+  riesgo de XSS** (código malicioso ejecutado en el mismo contexto podría
+  realizar peticiones mientras la pestaña esté abierta).
+- No se implementan cookies, refresh tokens ni persistencia local.
+- La identidad y el rol se obtienen del servidor (`GET /api/usuarios/yo`).
 - Las rutas protegidas mejoran la experiencia; no sustituyen RD-06.
 - El servidor decide la autorización en cada operación.
-- Ante un 401 en una llamada protegida, limpiar la sesión del cliente y
-  solicitar acceso nuevamente. Un 401 en login es un error de credenciales.
-- Un 403 no significa necesariamente sesión vencida: mostrar el rechazo.
-- Cerrar sesión mediante la API y limpiar el estado sensible del cliente;
-  manejar explícitamente un fallo de revocación sin afirmar éxito remoto.
-- No registrar tokens, contraseñas, códigos ni enlaces de recuperación.
+- El token solo se adjunta a operaciones autenticadas dirigidas a la API.
+- Ante un 401 en una llamada autenticada, invalidar únicamente la sesión
+  correspondiente al token utilizado y solicitar acceso nuevamente. Un 401 en
+  login se presenta como credenciales rechazadas sin alterar una sesión ajena.
+- Un 403 no cierra automáticamente la sesión: se presenta el rechazo de permisos.
+- Cerrar sesión mediante la API (`DELETE /api/sesiones`) y limpiar siempre el
+  estado sensible del cliente; si la revocación remota falla, informar el fallo
+  sin afirmar éxito en el servidor.
+- Nunca registrar tokens, contraseñas, códigos ni enlaces de recuperación.
 - Las variables incluidas en el bundle del navegador son públicas:
   nunca colocar allí credenciales, claves privadas ni cadenas de conexión.
 - No renderizar HTML externo sin una necesidad y tratamiento explícitos.
-- Configurar origen de API; si hay orígenes distintos, coordinar CORS con
-  backend. No intentar resolverlo usando `no-cors` ni desactivando seguridad.
 
 ## 8. Reglas para permisos y reservas
 
