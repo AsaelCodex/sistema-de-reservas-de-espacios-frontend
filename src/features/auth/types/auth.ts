@@ -1,10 +1,19 @@
-import type { ApiError } from '../../../shared/api/apiError.ts'
+import { ApiError } from '../../../shared/api/apiError.ts'
 
 /**
  * Roles oficiales del sistema (RF-CA-04).
  * AGENTS.md §6: el valor técnico serializado para Estándar puede ser "Estandar" o "Estándar".
  */
 export type RolUsuario = 'Administrador' | 'Estandar' | 'Estándar'
+
+/**
+ * Cuerpo comprobado de POST /api/sesiones (AGENTS.md §6).
+ * Incluye la clave exacta `contraseña` con `ñ`. No se debe recortar ni transformar la contraseña.
+ */
+export interface IniciarSesionRequest {
+  readonly correo: string
+  readonly contraseña: string
+}
 
 /**
  * Respuesta comprobada de POST /api/sesiones (AGENTS.md §6).
@@ -17,12 +26,11 @@ export interface CredencialSesionResponse {
 
 /**
  * Identidad y rol devueltos por GET /api/usuarios/yo (RF-CA-07, docs/gestion-permisos.md §5).
- * `rol` está comprobado en la documentación; `id`, `nombre` y `correo` se leen de forma
- * opcional si el servidor los incluye en la respuesta.
+ * `nombre` y `rol` están comprobados; `id` y `correo` se leen de forma opcional si el servidor los incluye.
  */
 export interface UsuarioAutenticado {
   readonly id?: string
-  readonly nombre?: string
+  readonly nombre: string
   readonly correo?: string
   readonly rol: RolUsuario
 }
@@ -36,6 +44,7 @@ export interface EstadoSesion {
   readonly usuario: UsuarioAutenticado | null
   readonly vencimiento: string | null
   readonly motivoInvalidez: MotivoInvalidezSesion
+  readonly avisoCierre: string | null
 }
 
 export interface ResultadoCierreSesion {
@@ -43,18 +52,32 @@ export interface ResultadoCierreSesion {
   readonly error?: ApiError
 }
 
+export type CategoriaErrorLogin =
+  | 'credenciales_invalidas'
+  | 'cuenta_inactiva'
+  | 'cuenta_bloqueada'
+  | 'acceso_denegado'
+  | 'validacion'
+  | 'conexion'
+  | 'servidor'
+
+export interface ErrorLoginClasificado {
+  readonly categoria: CategoriaErrorLogin
+  readonly titulo: string
+  readonly mensaje: string
+  readonly fieldErrors: Record<string, string[]>
+}
+
 /**
  * Contratos de entrada/salida de autenticación cuyos esquemas JSON exactos
- * dependen de confirmación contra los Controllers/Models actuales del backend:
+ * siguen pendientes de confirmación contra los Controllers/Models actuales del backend:
  *
- * 1. POST /api/sesiones (cuerpo de petición): confirmar si la clave es `contraseña` o `contrasena`.
- * 2. POST /api/usuarios (registro): confirmar claves exactas (`nombre`, `correo`, `contraseña`/`contrasena`).
- * 3. GET /activar?token=... y POST /activar/reenviar: confirmar ruta exacta en API para no colisionar con la vista `/activar`.
- * 4. PUT /api/usuarios/yo/contrasena: confirmar nombres de campos para contraseña actual y nueva.
- * 5. POST /api/recuperacion-contrasena y POST /api/recuperacion-contrasena/cambio: confirmar campos de solicitud y canje de código.
+ * 1. POST /api/usuarios (registro): confirmar claves exactas (`nombre`, `correo`, `contraseña`/`contrasena`).
+ * 2. GET /activar?token=... y POST /activar/reenviar: confirmar ruta exacta en API para no colisionar con la vista `/activar`.
+ * 3. PUT /api/usuarios/yo/contrasena: confirmar nombres de campos para contraseña actual y nueva.
+ * 4. POST /api/recuperacion-contrasena y POST /api/recuperacion-contrasena/cambio: confirmar campos de solicitud y canje de código.
  */
 export type ContratoAutenticacionPendiente =
-  | 'POST /api/sesiones (request body)'
   | 'POST /api/usuarios (request/response)'
   | 'GET /activar y POST /activar/reenviar (ruta y DTO)'
   | 'PUT /api/usuarios/yo/contrasena (request body)'
@@ -137,18 +160,102 @@ export function validarUsuarioAutenticado(data: unknown): UsuarioAutenticado {
     throw new Error('La respuesta de identidad del usuario no es un objeto válido.')
   }
   const record = data as Record<string, unknown>
+  const nombre = typeof record.nombre === 'string' ? record.nombre.trim() : ''
+  if (!nombre) {
+    throw new Error('La respuesta de /api/usuarios/yo no contiene un nombre válido.')
+  }
   if (!esRolUsuario(record.rol)) {
     throw new Error('La respuesta de /api/usuarios/yo no contiene un rol válido.')
   }
 
   return {
+    nombre,
     rol: record.rol,
     ...(typeof record.id === 'string' && record.id.trim() !== '' ? { id: record.id.trim() } : {}),
-    ...(typeof record.nombre === 'string' && record.nombre.trim() !== ''
-      ? { nombre: record.nombre.trim() }
-      : {}),
     ...(typeof record.correo === 'string' && record.correo.trim() !== ''
       ? { correo: record.correo.trim() }
       : {}),
+  }
+}
+
+export function clasificarErrorLogin(error: unknown): ErrorLoginClasificado {
+  if (error instanceof ApiError) {
+    if (error.kind === 'invalid_credentials') {
+      return {
+        categoria: 'credenciales_invalidas',
+        titulo: 'Credenciales incorrectas',
+        mensaje: error.message,
+        fieldErrors: error.fieldErrors,
+      }
+    }
+
+    if (error.kind === 'forbidden') {
+      const normalized = error.message.toLowerCase()
+      if (
+        normalized.includes('bloquead') ||
+        normalized.includes('intentos') ||
+        normalized.includes('15 minutos')
+      ) {
+        return {
+          categoria: 'cuenta_bloqueada',
+          titulo: 'Cuenta bloqueada temporalmente',
+          mensaje: error.message,
+          fieldErrors: error.fieldErrors,
+        }
+      }
+
+      if (
+        normalized.includes('inactiv') ||
+        normalized.includes('no está activa') ||
+        normalized.includes('no esta activa') ||
+        normalized.includes('activ')
+      ) {
+        return {
+          categoria: 'cuenta_inactiva',
+          titulo: 'Cuenta pendiente de activación',
+          mensaje: error.message,
+          fieldErrors: error.fieldErrors,
+        }
+      }
+
+      return {
+        categoria: 'acceso_denegado',
+        titulo: 'Acceso denegado',
+        mensaje: error.message,
+        fieldErrors: error.fieldErrors,
+      }
+    }
+
+    if (error.kind === 'validation') {
+      return {
+        categoria: 'validacion',
+        titulo: 'Datos de acceso inválidos',
+        mensaje: error.message,
+        fieldErrors: error.fieldErrors,
+      }
+    }
+
+    if (error.kind === 'network' || error.kind === 'service_unavailable') {
+      return {
+        categoria: 'conexion',
+        titulo: 'Error de conexión',
+        mensaje: error.message,
+        fieldErrors: {},
+      }
+    }
+
+    return {
+      categoria: 'servidor',
+      titulo: 'No se pudo iniciar sesión',
+      mensaje: error.message,
+      fieldErrors: {},
+    }
+  }
+
+  return {
+    categoria: 'servidor',
+    titulo: 'No se pudo iniciar sesión',
+    mensaje: 'La respuesta del servidor no permitió completar el inicio de sesión.',
+    fieldErrors: {},
   }
 }

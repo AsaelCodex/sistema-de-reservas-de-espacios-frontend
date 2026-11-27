@@ -5,6 +5,7 @@ import {
   consultarUsuarioActual,
   establecerSesion,
   getSessionSnapshot,
+  iniciarSesion,
   limpiarSesionEnMemoria,
   subscribeSession,
 } from './sessionStore.ts'
@@ -31,6 +32,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     () => ({
       ...snapshot,
       esAdministrador: esAdministrador(snapshot.usuario),
+      iniciarSesion,
       establecerSesion,
       consultarUsuarioActual,
       cerrarSesion,
