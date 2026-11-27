@@ -11,6 +11,7 @@ import {
   validarCredencialSesion,
   validarUsuarioAutenticado,
   type EstadoSesion,
+  type IniciarSesionRequest,
   type ResultadoCierreSesion,
   type UsuarioAutenticado,
 } from './types/auth.ts'
@@ -26,9 +27,11 @@ const INITIAL_STATE: EstadoSesion = {
   usuario: null,
   vencimiento: null,
   motivoInvalidez: null,
+  avisoCierre: null,
 }
 
 let currentState: EstadoSesion = INITIAL_STATE
+let sessionEpoch = 0
 const listeners = new Set<() => void>()
 
 function updateState(next: EstadoSesion): void {
@@ -39,11 +42,13 @@ function updateState(next: EstadoSesion): void {
 }
 
 onSessionInvalidated(() => {
+  sessionEpoch += 1
   updateState({
     status: 'anonymous',
     usuario: null,
     vencimiento: null,
     motivoInvalidez: 'sesion_expirada',
+    avisoCierre: null,
   })
 })
 
@@ -59,8 +64,33 @@ export function subscribeSession(listener: () => void): () => void {
 }
 
 export function limpiarSesionEnMemoria(): void {
+  sessionEpoch += 1
   setSessionToken(null)
   updateState(INITIAL_STATE)
+}
+
+/**
+ * Envía `POST /api/sesiones` como petición pública con las claves exactas
+ * `{ correo, contraseña }` (sin recortar ni transformar la contraseña) y,
+ * al recibir la credencial, la pasa a `establecerSesion`.
+ */
+export async function iniciarSesion(
+  credenciales: IniciarSesionRequest,
+  options: SessionOperationOptions = {}
+): Promise<UsuarioAutenticado> {
+  const credencialRaw = await httpRequest<unknown>('/api/sesiones', {
+    method: 'POST',
+    auth: false,
+    body: {
+      correo: credenciales.correo.trim(),
+      contraseña: credenciales.contraseña,
+    },
+    fetchImpl: options.fetchImpl,
+    config: options.config,
+    signal: options.signal,
+  })
+
+  return establecerSesion(credencialRaw, options)
 }
 
 /**
@@ -74,12 +104,16 @@ export async function establecerSesion(
 ): Promise<UsuarioAutenticado> {
   const { token, vencimiento } = validarCredencialSesion(credencialRaw)
 
+  sessionEpoch += 1
+  const activeEpoch = sessionEpoch
+
   setSessionToken(token)
   updateState({
     status: 'loading',
     usuario: null,
     vencimiento,
     motivoInvalidez: null,
+    avisoCierre: null,
   })
 
   try {
@@ -93,18 +127,19 @@ export async function establecerSesion(
 
     const usuario = validarUsuarioAutenticado(rawUser)
 
-    if (getSessionToken() === token) {
+    if (sessionEpoch === activeEpoch && getSessionToken() === token) {
       updateState({
         status: 'authenticated',
         usuario,
         vencimiento,
         motivoInvalidez: null,
+        avisoCierre: null,
       })
     }
 
     return usuario
   } catch (error) {
-    if (getSessionToken() === token) {
+    if (sessionEpoch === activeEpoch && getSessionToken() === token) {
       clearSessionTokenIfMatches(token)
       updateState(INITIAL_STATE)
     }
@@ -116,6 +151,7 @@ export async function consultarUsuarioActual(
   options: SessionOperationOptions = {}
 ): Promise<UsuarioAutenticado> {
   const activeToken = getSessionToken()
+  const activeEpoch = sessionEpoch
   const rawUser = await httpRequest<unknown>('/api/usuarios/yo', {
     method: 'GET',
     auth: true,
@@ -126,12 +162,13 @@ export async function consultarUsuarioActual(
 
   const usuario = validarUsuarioAutenticado(rawUser)
 
-  if (activeToken && getSessionToken() === activeToken) {
+  if (activeToken && sessionEpoch === activeEpoch && getSessionToken() === activeToken) {
     updateState({
       status: 'authenticated',
       usuario,
       vencimiento: currentState.vencimiento,
       motivoInvalidez: null,
+      avisoCierre: null,
     })
   }
 
@@ -140,14 +177,16 @@ export async function consultarUsuarioActual(
 
 /**
  * Limpia siempre el estado sensible en memoria e invoca `DELETE /api/sesiones`.
- * Si la revocación remota falla, informa `revocadaEnServidor: false` junto al error
- * sin afirmar éxito en el servidor (AGENTS.md §7).
+ * El resultado y el aviso de fallo quedan asociados a la sesión que se cerró:
+ * si ya comenzó una sesión nueva mientras el DELETE seguía en curso, no altera
+ * el estado, el token ni la ruta de la sesión nueva.
  */
 export async function cerrarSesion(
   options: SessionOperationOptions = {}
 ): Promise<ResultadoCierreSesion> {
   const tokenToRevoke = getSessionToken()
   limpiarSesionEnMemoria()
+  const closedSessionEpoch = sessionEpoch
 
   if (!tokenToRevoke) {
     return { revocadaEnServidor: false }
@@ -174,6 +213,14 @@ export async function cerrarSesion(
             status: null,
             message: 'No se pudo confirmar el cierre de sesión en el servidor.',
           })
+
+    if (sessionEpoch === closedSessionEpoch && getSessionToken() === null) {
+      updateState({
+        ...INITIAL_STATE,
+        avisoCierre: `La sesión se cerró en este navegador, pero no se pudo revocar en el servidor: ${apiError.message}`,
+      })
+    }
+
     return {
       revocadaEnServidor: false,
       error: apiError,

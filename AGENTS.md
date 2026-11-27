@@ -53,6 +53,10 @@ evidencia cuando corresponda.
   conexión, cliente HTTP sobre `fetch`, gestión de sesión exclusivamente en
   memoria (`AuthProvider`) y contratos de autenticación respaldados por
   evidencia documental.
+- Flujo de acceso en `feature/frontend-login`: pantalla `/login` accesible en
+  español, integración con `POST /api/sesiones` y `GET /api/usuarios/yo`,
+  vista protegida mínima en `/` con nombre, rol y cierre de sesión
+  (`DELETE /api/sesiones`).
 
 ### Estado histórico documentado del backend (repositorio separado)
 
@@ -173,19 +177,23 @@ no renombrarlos sin un adaptador explícito y comprobado.
 
 ### Estado del contrato de acceso (comprobado vs. pendiente)
 
-- **Comprobado en documentación del proyecto (`docs/` y `AGENTS.md`):**
-  - `POST /api/sesiones` devuelve `{ token, vencimiento }`.
+- **Comprobado en documentación del proyecto y especificaciones confirmadas (`docs/` y `AGENTS.md`):**
+  - `POST /api/sesiones` recibe `{ correo, contraseña }` (sin recortar ni transformar
+    `contraseña`) y devuelve `201` con `{ token, vencimiento }` (fecha ISO-8601 con
+    zona explícita); ante rechazo devuelve `401` (credenciales incorrectas), `403`
+    (cuenta inactiva o bloqueada según el mensaje de la API) o `400` (validación).
   - `DELETE /api/sesiones` revoca la sesión activa enviada en `Authorization: Bearer <token>`.
-  - `GET /api/usuarios/yo` requiere sesión válida y devuelve al menos `rol`
-    (`"Administrador"` o `"Estandar"`/`"Estándar"`, verificado en `docs/gestion-permisos.md` §5).
+  - `GET /api/usuarios/yo` requiere sesión válida y devuelve `{ nombre, rol }`
+    (`"Administrador"` o `"Estandar"`/`"Estándar"`, verificado en `docs/gestion-permisos.md` §5),
+    además de propiedades opcionales como `id` o `correo`.
   - `POST /api/reservas` recibe `{ espacio, fecha, horaInicio, horaFin }` y
     devuelve códigos 201, 400, 401, 403, 404, 409 o 503 (`docs/contrato-negocio.md`).
 - **Pendiente de confirmar con el repositorio del backend:**
-  - Nombres exactos de las propiedades de entrada en `POST /api/sesiones`,
-    `POST /api/usuarios`, `PUT /api/usuarios/yo/contrasena`,
-    `POST /api/recuperacion-contrasena` y `POST /api/recuperacion-contrasena/cambio`
-    (específicamente el uso de `contraseña` vs `contrasena` y campos adicionales).
-  - Propiedades adicionales de respuesta en `GET /api/usuarios/yo` (`id`, `nombre`, `correo`, `activo`).
+  - Nombres exactos de las propiedades de entrada en `POST /api/usuarios`,
+    `PUT /api/usuarios/yo/contrasena`, `POST /api/recuperacion-contrasena` y
+    `POST /api/recuperacion-contrasena/cambio` (específicamente el uso de
+    `contraseña` vs `contrasena` y campos adicionales).
+  - Propiedades adicionales de respuesta en `GET /api/usuarios/yo` (por ejemplo, `activo`).
   - Prefijo y forma de invocación de `GET /activar?token=...` y `POST /activar/reenviar`
     para no colisionar con la ruta de cliente `/activar`.
 

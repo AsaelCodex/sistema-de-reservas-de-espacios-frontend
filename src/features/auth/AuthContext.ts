@@ -2,12 +2,17 @@ import { createContext, useContext } from 'react'
 import type { SessionOperationOptions } from './sessionStore.ts'
 import type {
   EstadoSesion,
+  IniciarSesionRequest,
   ResultadoCierreSesion,
   UsuarioAutenticado,
 } from './types/auth.ts'
 
 export interface AuthContextValue extends EstadoSesion {
   readonly esAdministrador: boolean
+  readonly iniciarSesion: (
+    credenciales: IniciarSesionRequest,
+    options?: SessionOperationOptions
+  ) => Promise<UsuarioAutenticado>
   readonly establecerSesion: (
     credencialRaw: unknown,
     options?: SessionOperationOptions
